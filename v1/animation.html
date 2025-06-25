@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Make a Hologram!</title>
+  <style>
+    /* Reset margins and ensure full viewport */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: sans-serif;
+    }
+    /* Main container that divides the page */
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+    }
+    /* Header area */
+    header {
+      flex: 0 0 auto;
+      text-align: center;
+      padding: 10px;
+    }
+    /* Controls area */
+    .controls {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      padding: 10px;
+    }
+    /* Canvas wrapper that centers and scales the canvas */
+    .canvas-wrapper {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+    canvas {
+      border: 2px solid #e0e0e0;
+      background: #1e1e1e;
+      /* Ensure canvas scales down if needed */
+      max-width: 100%;
+      max-height: 100%;
+      image-rendering: pixelated;
+      /* Maintain aspect ratio of 64:32 (2:1) */
+      aspect-ratio: 2 / 1;
+    }
+    /* Footer area (for the send button) */
+    footer {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+    }
+    .color-display {
+      width: 30px;
+      height: 30px;
+      border: 2px solid #e0e0e0;
+      border-radius: 4px;
+    }
+    button {
+      padding: 8px 16px;
+      cursor: pointer;
+      background: #1e1e1e;
+      border: 2px solid #e0e0e0;
+      border-radius: 4px;
+      color: #e0e0e0;
+    }
+    button:hover {
+      background: #333;
+    }
+    #send {
+      font-size: xx-large;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Make Your Own Hologram!</h1>
+    </header>
+    <div class="controls">
+      <input type="color" id="colorPicker" value="#ffffff">
+      <button id="eraser">Eraser</button>
+      <button id="clear">Clear</button>
+      <div class="color-display" id="colorDisplay"></div>
+    </div>
+    <div class="canvas-wrapper">
+      <canvas id="canvas"></canvas>
+    </div>
+    <footer>
+      <button id="send">Send</button>
+    </footer>
+  </div>
+
+  <script>
+
+const STORAGE_KEY = "hologramPixels";
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const colorPicker = document.getElementById('colorPicker');
+    const eraserBtn = document.getElementById('eraser');
+    const clearBtn = document.getElementById('clear');
+    const sendBtn = document.getElementById('send');
+    const colorDisplay = document.getElementById('colorDisplay');
+
+    // Configuration
+    const PIXEL_SIZE = 20;
+    const GRID_SIZE_X = 64;
+    const GRID_SIZE_Y = 32;
+    const CANVAS_WIDTH = PIXEL_SIZE * GRID_SIZE_X;
+    const CANVAS_HEIGHT = PIXEL_SIZE * GRID_SIZE_Y;
+    const BACKGROUND_COLOR = '#1e1e1e';
+
+    let currentColor = colorPicker.value;
+    let isDrawing = false;
+    let pixels = Array(GRID_SIZE_Y).fill().map(() => Array(GRID_SIZE_X).fill(BACKGROUND_COLOR));
+
+    function saveToLocalStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pixels));
+    }
+
+    function loadFromLocalStorage() {
+    const storedPixels = localStorage.getItem(STORAGE_KEY);
+    if (storedPixels) {
+        pixels = JSON.parse(storedPixels);
+        redrawCanvas();
+    }
+    }
+    // Canvas setup
+    window.addEventListener('beforeunload', () => console.log("Page is reloading!"));
+
+    
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    ctx.fillStyle = BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    colorDisplay.style.backgroundColor = currentColor;
+    drawGrid();
+
+    window.addEventListener("error", function(event) {
+  event.preventDefault();
+  console.error("Global error caught:", event);
+});
+
+    // Event Listeners
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchend', stopDrawing);
+    colorPicker.addEventListener('input', updateColor);
+    eraserBtn.addEventListener('click', setEraser);
+    clearBtn.addEventListener('click', clearCanvas);
+    sendBtn.addEventListener('click', function(event){  event.preventDefault(); // Stop form from submitting
+      sendGridData()});
+      loadFromLocalStorage(); // Load saved pixels on page load
+    function getCanvasPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      let x, y;
+      if (event.touches) {
+        x = event.touches[0].clientX - rect.left;
+        y = event.touches[0].clientY - rect.top;
+      } else {
+        x = event.clientX - rect.left;
+        y = event.clientY - rect.top;
+      }
+      return {
+        x: Math.floor(x / PIXEL_SIZE),
+        y: Math.floor(y / PIXEL_SIZE)
+      };
+    }
+
+    function startDrawing(e) {
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getCanvasPosition(e);
+      drawPixel(pos.x, pos.y);
+    }
+
+    function draw(e) {
+      e.preventDefault();
+      if (!isDrawing) return;
+      const pos = getCanvasPosition(e);
+      drawPixel(pos.x, pos.y);
+    }
+
+    function stopDrawing(e) {
+      e.preventDefault();
+      isDrawing = false;
+    }
+
+    function drawPixel(x, y) {
+    if (x >= 0 && x < GRID_SIZE_X && y >= 0 && y < GRID_SIZE_Y) {
+      pixels[y][x] = currentColor;
+      ctx.fillStyle = currentColor;
+      ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+      ctx.strokeStyle = '#333';
+      ctx.strokeRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+      saveToLocalStorage(); // Save after every pixel change
+    }
+  }
+  function redrawCanvas() {
+    ctx.fillStyle = BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    for (let y = 0; y < GRID_SIZE_Y; y++) {
+      for (let x = 0; x < GRID_SIZE_X; x++) {
+        if (pixels[y][x] !== BACKGROUND_COLOR) {
+          ctx.fillStyle = pixels[y][x];
+          ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        }
+      }
+    }
+    drawGrid();
+  }
+
+    function drawGrid() {
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      // Vertical lines
+      for (let i = 0; i <= GRID_SIZE_X; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * PIXEL_SIZE, 0);
+        ctx.lineTo(i * PIXEL_SIZE, CANVAS_HEIGHT);
+        ctx.stroke();
+      }
+      // Horizontal lines
+      for (let i = 0; i <= GRID_SIZE_Y; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * PIXEL_SIZE);
+        ctx.lineTo(CANVAS_WIDTH, i * PIXEL_SIZE);
+        ctx.stroke();
+      }
+    }
+
+    function updateColor(e) {
+      currentColor = e.target.value;
+      colorDisplay.style.backgroundColor = currentColor;
+    }
+
+    function setEraser() {
+      currentColor = BACKGROUND_COLOR;
+      colorDisplay.style.backgroundColor = currentColor;
+    }
+
+    function clearCanvas() {
+    ctx.fillStyle = BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    pixels = Array(GRID_SIZE_Y).fill().map(() => Array(GRID_SIZE_X).fill(BACKGROUND_COLOR));
+    drawGrid();
+    saveToLocalStorage(); // Clear storage
+  }
+
+    function sendGridData() {
+    console.log("Sending canvas data...");
+    const flatPixels = pixels.flat().map((pixel) =>{if(pixel == BACKGROUND_COLOR){return null} else if(pixel == "#ff0000"){return 1} else{return 0}}); // Convert 2D array to 1D
+
+  fetch("http://localhost:6969/save", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ pixels: flatPixels })
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    return response.json();
+  })
+  .then(data => alert('sent'))
+  .catch(error => {
+    console.error('Fetch error:', error);
+    alert("Fetch failed! Check the server.");
+  });
+
+  console.log("Canvas data sent:", pixels);
+}
+
+  </script>
+</body>
+</html>
